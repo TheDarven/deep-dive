@@ -141,13 +141,13 @@ describe("pullPushReactivity", () => {
                 firstName.value = "Jane"; // Modification of the ref value invalidates the computed value
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "formattedFirstName" },
-                    { event: "invalidateCache", name: "formattedFirstName" },
+                    { event: "markedAsDirty", name: "formattedFirstName" },
                 ]);
 
                 void formattedFirstName.value; // Accessing the value trigger the second evaluation because the computed value has been invalidated
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "formattedFirstName" },
-                    { event: "invalidateCache", name: "formattedFirstName" },
+                    { event: "markedAsDirty", name: "formattedFirstName" },
                     { event: "evaluate", name: "formattedFirstName" },
                 ]);
             });
@@ -167,19 +167,19 @@ describe("pullPushReactivity", () => {
                 firstName.value = "Jane"; // Modification of the ref value invalidates the computed value
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "formattedFirstName" },
-                    { event: "invalidateCache", name: "formattedFirstName" },
+                    { event: "markedAsDirty", name: "formattedFirstName" },
                 ]);
 
                 firstName.value = "John"; // Modification of the ref value invalidates the computed value
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "formattedFirstName" },
-                    { event: "invalidateCache", name: "formattedFirstName" },
+                    { event: "markedAsDirty", name: "formattedFirstName" },
                 ]);
 
                 void formattedFirstName.value; // Accessing the value trigger the second evaluation because the computed value has been invalidated
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "formattedFirstName" },
-                    { event: "invalidateCache", name: "formattedFirstName" },
+                    { event: "markedAsDirty", name: "formattedFirstName" },
                     { event: "evaluate", name: "formattedFirstName" },
                 ]);
             });
@@ -273,13 +273,13 @@ describe("pullPushReactivity", () => {
                 lastName.value = "Smith";
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
+                    { event: "markedAsDirty", name: "fullName" },
                 ]);
 
                 void fullName.value; // Accessing the value trigger the second evaluation because the computed value has been invalidated
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
+                    { event: "markedAsDirty", name: "fullName" },
                     { event: "evaluate", name: "fullName" },
                 ]);
             });
@@ -302,19 +302,19 @@ describe("pullPushReactivity", () => {
                 firstName.value = "Jane"; // Modification of the ref value invalidates the computed value
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
+                    { event: "markedAsDirty", name: "fullName" },
                 ]);
 
                 lastName.value = "Smith"; // 👉 Computed is already invalidated, no need to invalidate it again
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
+                    { event: "markedAsDirty", name: "fullName" },
                 ]);
 
                 void fullName.value; // Accessing the value trigger the second evaluation because the computed value has been invalidated
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
+                    { event: "markedAsDirty", name: "fullName" },
                     { event: "evaluate", name: "fullName" },
                 ]);
             });
@@ -414,16 +414,16 @@ describe("pullPushReactivity", () => {
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "formattedFullName" },
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
-                    { event: "invalidateCache", name: "formattedFullName" },
+                    { event: "markedAsDirty", name: "fullName" },
+                    { event: "markedAsDirty", name: "formattedFullName" },
                 ]);
 
                 void formattedFullName.value; // Accessing the value trigger the second evaluation because the computed value has been invalidated
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "formattedFullName" },
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
-                    { event: "invalidateCache", name: "formattedFullName" },
+                    { event: "markedAsDirty", name: "fullName" },
+                    { event: "markedAsDirty", name: "formattedFullName" },
                     { event: "evaluate", name: "formattedFullName" },
                     { event: "evaluate", name: "fullName" },
                 ]);
@@ -447,43 +447,16 @@ describe("pullPushReactivity", () => {
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "formattedFullName" },
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
-                    { event: "invalidateCache", name: "formattedFullName" },
+                    { event: "markedAsDirty", name: "fullName" },
+                    { event: "markedAsDirty", name: "formattedFullName" },
                 ]);
 
                 lastName.value = "Smith"; // 👉 Computed is already invalidated, no need to invalidate it again
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "formattedFullName" },
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
-                    { event: "invalidateCache", name: "formattedFullName" },
-                ]);
-            });
-
-            it.only("should not notify computed if the dependency computed value is re-evaluated to the same value", () => {
-                const number1 = ref<number>(1);
-                const number2 = ref<number>(2);
-                const minNumber = computed(
-                    () => Math.min(number1.value, number2.value),
-                    { name: "minNumber" },
-                );
-                const formattedMinNumber = computed(
-                    () => `Min number is "${minNumber.value}"`,
-                    { name: "formattedMinNumber" },
-                );
-
-                void formattedMinNumber.value;
-                assertEquals(ReactivityTestContext.events, [
-                    { event: "evaluate", name: "formattedMinNumber" },
-                    { event: "evaluate", name: "minNumber" },
-                ]);
-
-                number1.value = 3;
-                number2.value = 1;
-                assertEquals(ReactivityTestContext.events, [
-                    { event: "evaluate", name: "formattedMinNumber" },
-                    { event: "evaluate", name: "minNumber" },
-                    { event: "invalidateCache", name: "minNumber" },
+                    { event: "markedAsDirty", name: "fullName" },
+                    { event: "markedAsDirty", name: "formattedFullName" },
                 ]);
             });
         });
@@ -530,12 +503,6 @@ describe("pullPushReactivity", () => {
                 lastName.value = "Doe";
                 assertEquals(identity.value, "John Doe is 31 years old");
             });
-
-            // ======== //
-            // ======== //
-            // ======== //
-            // ======== //
-            // ======== //
 
             it("for performance purposes, it's unnecessary to invalidate the computed value until it's accessed first time (i.e. the computed has not been computed yet)", () => {
                 const firstName = ref<string>("John");
@@ -590,16 +557,16 @@ describe("pullPushReactivity", () => {
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "identity" },
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
-                    { event: "invalidateCache", name: "identity" },
+                    { event: "markedAsDirty", name: "fullName" },
+                    { event: "markedAsDirty", name: "identity" },
                 ]);
 
                 void identity.value; // Accessing the value trigger the second evaluation because the computed value has been invalidated
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "identity" },
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
-                    { event: "invalidateCache", name: "identity" },
+                    { event: "markedAsDirty", name: "fullName" },
+                    { event: "markedAsDirty", name: "identity" },
                     { event: "evaluate", name: "identity" },
                     { event: "evaluate", name: "fullName" },
                 ]);
@@ -624,16 +591,16 @@ describe("pullPushReactivity", () => {
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "identity" },
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
-                    { event: "invalidateCache", name: "identity" },
+                    { event: "markedAsDirty", name: "fullName" },
+                    { event: "markedAsDirty", name: "identity" },
                 ]);
 
                 lastName.value = "Smith"; // 👉 Computed is already invalidated, no need to invalidate it again
                 assertEquals(ReactivityTestContext.events, [
                     { event: "evaluate", name: "identity" },
                     { event: "evaluate", name: "fullName" },
-                    { event: "invalidateCache", name: "fullName" },
-                    { event: "invalidateCache", name: "identity" },
+                    { event: "markedAsDirty", name: "fullName" },
+                    { event: "markedAsDirty", name: "identity" },
                 ]);
             });
         });

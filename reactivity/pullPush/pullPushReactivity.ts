@@ -1,14 +1,15 @@
 import Stack from "../stack.ts";
 
-type NotifySubscriberFn = () => void;
-
-const ReactivityContext = {
-    notifySubscriberFnStack: new Stack<
-        NotifySubscriberFn
-    >(),
+type DependencyEffect = {
+    notifyValueChange: () => void;
+    propagateDirty: () => void;
 };
 
-type ComputedTestEvent = "evaluate" | "invalidateCache";
+const ReactivityContext = {
+    dependencyEffectStack: new Stack<DependencyEffect>(),
+};
+
+type ComputedTestEvent = "evaluate" | "markedAsDirty";
 type TestEvent = ComputedTestEvent;
 
 export const ReactivityTestContext = (() => {
@@ -39,33 +40,37 @@ export const ReactivityTestContext = (() => {
 })();
 
 function buildDependency(): {
-    notifySubscribers: () => void;
-    addSubscriberIfNotAlready: () => void;
+    propagateDirty: () => void;
+    notifyValueChange: () => void;
+    registerDependencyIfNotAlready: () => void;
 } {
-    const subscribers: NotifySubscriberFn[] = [];
+    const subscribers: (() => void)[] = [];
+    const dependencies: (() => void)[] = [];
 
-    const notifySubscribers = () => {
-        subscribers.forEach((notifySubscriberFn) => notifySubscriberFn());
+    const propagateDirty = () => {
+        dependencies.forEach((notifyDependency) => notifyDependency());
     };
 
-    const addSubscriberIfNotAlready = () => {
-        if (
-            ReactivityContext.notifySubscriberFnStack.isEmpty() ||
-            subscribers.includes(
-                ReactivityContext.notifySubscriberFnStack.peek(),
-            )
-        ) {
+    const notifyValueChange = () => {
+        subscribers.forEach((notifySubscriber) => notifySubscriber());
+    };
+
+    const registerDependencyIfNotAlready = () => {
+        if (ReactivityContext.dependencyEffectStack.isEmpty()) {
             return;
         }
 
-        subscribers.push(
-            ReactivityContext.notifySubscriberFnStack.peek(),
-        );
+        const dependencyEffect = ReactivityContext.dependencyEffectStack.peek();
+
+        if (!dependencies.includes(dependencyEffect.propagateDirty)) {
+            dependencies.push(dependencyEffect.propagateDirty);
+        }
     };
 
     return {
-        notifySubscribers,
-        addSubscriberIfNotAlready,
+        propagateDirty,
+        notifyValueChange,
+        registerDependencyIfNotAlready,
     };
 }
 
@@ -74,11 +79,15 @@ type RefValue = number | string | boolean | null | undefined;
 export function ref<T extends RefValue>(initialValue: T): { value: T } {
     let value: T = initialValue;
 
-    const { notifySubscribers, addSubscriberIfNotAlready } = buildDependency();
+    const {
+        notifyValueChange,
+        propagateDirty,
+        registerDependencyIfNotAlready,
+    } = buildDependency();
 
     return {
         get value() {
-            addSubscriberIfNotAlready();
+            registerDependencyIfNotAlready();
 
             return value;
         },
@@ -89,7 +98,8 @@ export function ref<T extends RefValue>(initialValue: T): { value: T } {
 
             value = newValue;
 
-            notifySubscribers();
+            propagateDirty();
+            notifyValueChange();
         },
     };
 }
@@ -97,33 +107,27 @@ export function ref<T extends RefValue>(initialValue: T): { value: T } {
 export function computed<T>(compute: () => T, options?: { name?: string }) {
     let value: T;
 
-    let isDirty = 0;
-    let hasBeenEvaluatedFirstTime = false;
-    let amountOfDependencies = 0;
+    let isDirty = true;
 
-    const { notifySubscribers, addSubscriberIfNotAlready } = buildDependency();
+    const {
+        notifyValueChange,
+        propagateDirty,
+        registerDependencyIfNotAlready,
+    } = buildDependency();
 
-    const markDependancyAsDirtyFn = () => {
-        const dependencyIndex = amountOfDependencies++;
-        isDirty |= 1 << dependencyIndex;
+    const markAsDirtyAndPropagate = () => {
+        if (isDirty) {
+            return;
+        }
 
-        return () => {
-            if (isDirty & (1 << dependencyIndex)) {
-                return;
-            }
+        ReactivityTestContext.addEvent({
+            event: "markedAsDirty",
+            name: options?.name,
+        });
 
-            ReactivityTestContext.addEvent({
-                event: "invalidateCache", // TODO Renommer
-                name: options?.name,
-            });
+        isDirty = true;
 
-            isDirty |= 1 << dependencyIndex;
-
-            notifySubscribers();
-            // TODO Ne plus notify subscribers
-            // => on notify à l'evaluate si la valeur à changé
-            // => ou on recalcule si subscriber est get et que la dépendance est dirty
-        };
+        propagateDirty();
     };
 
     const evaluate = () => {
@@ -132,21 +136,24 @@ export function computed<T>(compute: () => T, options?: { name?: string }) {
             name: options?.name,
         });
 
-        ReactivityContext.notifySubscriberFnStack.push(
-            markDependancyAsDirtyFn(),
-        );
-        value = compute();
-        ReactivityContext.notifySubscriberFnStack.pop();
+        ReactivityContext.dependencyEffectStack.push({
+            notifyValueChange,
+            propagateDirty: markAsDirtyAndPropagate,
+        });
+        const newValue = compute();
+        ReactivityContext.dependencyEffectStack.pop();
 
-        isDirty = 0;
-        notifySubscribers();
+        isDirty = false;
+        if (newValue !== value) {
+            value = newValue;
+            propagateDirty();
+            notifyValueChange();
+        }
     };
 
     const evaluateIfNeeded = () => {
-        if (isDirty || !hasBeenEvaluatedFirstTime) {
-            hasBeenEvaluatedFirstTime = true;
+        if (isDirty) {
             evaluate();
-            return;
         }
     };
 
@@ -154,7 +161,7 @@ export function computed<T>(compute: () => T, options?: { name?: string }) {
         get value() {
             evaluateIfNeeded();
 
-            addSubscriberIfNotAlready();
+            registerDependencyIfNotAlready();
 
             return value;
         },
