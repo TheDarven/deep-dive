@@ -2,8 +2,6 @@ import Stack from "../stack.ts";
 
 type NotifySubscriberFn = () => void;
 
-type RefValue = number | string | boolean | null | undefined;
-
 const ReactivityContext = {
     notifySubscriberFnStack: new Stack<
         NotifySubscriberFn
@@ -40,8 +38,10 @@ export const ReactivityTestContext = (() => {
     };
 })();
 
-export function ref<T extends RefValue>(initialValue: T): { value: T } {
-    let value: T = initialValue;
+function buildDependency(): {
+    notifySubscribers: () => void;
+    addSubscriberIfNotAlready: () => void;
+} {
     const subscribers: NotifySubscriberFn[] = [];
 
     const notifySubscribers = () => {
@@ -62,6 +62,19 @@ export function ref<T extends RefValue>(initialValue: T): { value: T } {
             ReactivityContext.notifySubscriberFnStack.peek(),
         );
     };
+
+    return {
+        notifySubscribers,
+        addSubscriberIfNotAlready,
+    };
+}
+
+type RefValue = number | string | boolean | null | undefined;
+
+export function ref<T extends RefValue>(initialValue: T): { value: T } {
+    let value: T = initialValue;
+
+    const { notifySubscribers, addSubscriberIfNotAlready } = buildDependency();
 
     return {
         get value() {
@@ -83,44 +96,34 @@ export function ref<T extends RefValue>(initialValue: T): { value: T } {
 
 export function computed<T>(compute: () => T, options?: { name?: string }) {
     let value: T;
-    const subscribers: NotifySubscriberFn[] = [];
 
-    let isDirty = true;
+    let isDirty = 0;
+    let hasBeenEvaluatedFirstTime = false;
+    let amountOfDependencies = 0;
 
-    const notifySubscribers = () => {
-        subscribers.forEach((notifySubscriberFn) => notifySubscriberFn());
-    };
+    const { notifySubscribers, addSubscriberIfNotAlready } = buildDependency();
 
-    const addSubscriberIfNotAlready = () => {
-        if (
-            ReactivityContext.notifySubscriberFnStack.isEmpty() ||
-            subscribers.includes(
-                ReactivityContext.notifySubscriberFnStack.peek(),
-            )
-        ) {
-            return;
-        }
+    const markDependancyAsDirtyFn = () => {
+        const dependencyIndex = amountOfDependencies++;
+        isDirty |= 1 << dependencyIndex;
 
-        subscribers.push(
-            ReactivityContext.notifySubscriberFnStack.peek(),
-        );
-    };
+        return () => {
+            if (isDirty & (1 << dependencyIndex)) {
+                return;
+            }
 
-    const invalidateCache: NotifySubscriberFn = () => {
-        if (isDirty) {
-            return;
-        }
+            ReactivityTestContext.addEvent({
+                event: "invalidateCache", // TODO Renommer
+                name: options?.name,
+            });
 
-        ReactivityTestContext.addEvent({
-            event: "invalidateCache",
-            name: options?.name,
-        });
+            isDirty |= 1 << dependencyIndex;
 
-        isDirty = true;
-        notifySubscribers();
-        // TODO Ne plus notify subscribers
-        // => on notify à l'evaluate si la valeur à changé
-        // => ou on recalcule si subscriber est get et que la dépendance est dirty
+            notifySubscribers();
+            // TODO Ne plus notify subscribers
+            // => on notify à l'evaluate si la valeur à changé
+            // => ou on recalcule si subscriber est get et que la dépendance est dirty
+        };
     };
 
     const evaluate = () => {
@@ -129,19 +132,27 @@ export function computed<T>(compute: () => T, options?: { name?: string }) {
             name: options?.name,
         });
 
-        ReactivityContext.notifySubscriberFnStack.push(invalidateCache);
+        ReactivityContext.notifySubscriberFnStack.push(
+            markDependancyAsDirtyFn(),
+        );
         value = compute();
         ReactivityContext.notifySubscriberFnStack.pop();
 
-        isDirty = false;
+        isDirty = 0;
         notifySubscribers();
+    };
+
+    const evaluateIfNeeded = () => {
+        if (isDirty || !hasBeenEvaluatedFirstTime) {
+            hasBeenEvaluatedFirstTime = true;
+            evaluate();
+            return;
+        }
     };
 
     return {
         get value() {
-            if (isDirty) {
-                evaluate();
-            }
+            evaluateIfNeeded();
 
             addSubscriberIfNotAlready();
 
