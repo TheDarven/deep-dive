@@ -1,8 +1,8 @@
 import Stack from "../stack.ts";
 
 type DependencyEffect = {
-    notifyValueChange: () => void;
-    propagateDirty: () => void;
+    notifyValueChange: (() => void) | undefined;
+    propagateDirty: (() => void) | undefined;
 };
 
 const ReactivityContext = {
@@ -10,7 +10,8 @@ const ReactivityContext = {
 };
 
 type ComputedTestEvent = "evaluate" | "markedAsDirty";
-type TestEvent = ComputedTestEvent;
+type WatchTestEvent = "callback";
+type TestEvent = ComputedTestEvent | WatchTestEvent;
 
 export const ReactivityTestContext = (() => {
     let isTestEnvironment: boolean = false;
@@ -62,8 +63,18 @@ function buildDependency(): {
 
         const dependencyEffect = ReactivityContext.dependencyEffectStack.peek();
 
-        if (!dependencies.includes(dependencyEffect.propagateDirty)) {
+        if (
+            dependencyEffect.propagateDirty &&
+            !dependencies.includes(dependencyEffect.propagateDirty)
+        ) {
             dependencies.push(dependencyEffect.propagateDirty);
+        }
+
+        if (
+            dependencyEffect.notifyValueChange &&
+            !subscribers.includes(dependencyEffect.notifyValueChange)
+        ) {
+            subscribers.push(dependencyEffect.notifyValueChange);
         }
     };
 
@@ -166,4 +177,42 @@ export function computed<T>(compute: () => T, options?: { name?: string }) {
             return value;
         },
     };
+}
+
+export function watch(
+    watchFn: () => RefValue[],
+    callback: () => void,
+    options?: { name?: string },
+) {
+    let isCallbackRunning = false;
+
+    const invokeCallback = () => {
+        if (isCallbackRunning) {
+            return;
+        }
+
+        isCallbackRunning = true;
+
+        ReactivityTestContext.addEvent({
+            event: "callback",
+            name: options?.name,
+        });
+
+        callback();
+
+        isCallbackRunning = false;
+    };
+
+    const subscribeToValueChanges = () => {
+        ReactivityContext.dependencyEffectStack.push({
+            notifyValueChange: invokeCallback,
+            propagateDirty: undefined,
+        });
+
+        watchFn();
+
+        ReactivityContext.dependencyEffectStack.pop();
+    };
+
+    subscribeToValueChanges();
 }
