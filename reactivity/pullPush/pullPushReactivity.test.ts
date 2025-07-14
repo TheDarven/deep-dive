@@ -12,12 +12,12 @@ describe("pullPushReactivity", () => {
 
     describe("ref", () => {
         describe("given a number ref", () => {
-            it("the ref should be initialized with the initial value", () => {
+            it("initializes with the provided number", () => {
                 const a = ref<number>(1);
                 assertEquals(a.value, 1);
             });
 
-            it("the ref should be updated with the new value", () => {
+            it("updates the value when a new number is assigned", () => {
                 const a = ref<number>(1);
                 assertEquals(a.value, 1);
 
@@ -27,12 +27,12 @@ describe("pullPushReactivity", () => {
         });
 
         describe("given a string ref", () => {
-            it("the ref should be initialized with the initial value", () => {
+            it("initializes with the provided string", () => {
                 const a = ref<string>("1");
                 assertEquals(a.value, "1");
             });
 
-            it("the ref should be updated with the new value", () => {
+            it("updates the value when a new string is assigned", () => {
                 const a = ref<string>("1");
                 assertEquals(a.value, "1");
 
@@ -42,12 +42,12 @@ describe("pullPushReactivity", () => {
         });
 
         describe("given a boolean ref", () => {
-            it("the ref should be initialized with the initial value", () => {
+            it("initializes with the provided boolean", () => {
                 const a = ref<boolean>(true);
                 assertEquals(a.value, true);
             });
 
-            it("the ref should be updated with the new value", () => {
+            it("updates the value when a new boolean is assigned", () => {
                 const a = ref<boolean>(true);
                 assertEquals(a.value, true);
 
@@ -56,7 +56,7 @@ describe("pullPushReactivity", () => {
             });
         });
 
-        it("accessing the value repeatedly should have no side effects.", () => {
+        it("repeated access to .value does not trigger side effects", () => {
             const a = ref<number>(1);
             assertEquals(a.value, 1);
 
@@ -68,7 +68,7 @@ describe("pullPushReactivity", () => {
             assertEquals(a.value, 1);
         });
 
-        it("the ref should be initialized with null and updated", () => {
+        it("initializes with null and updates correctly", () => {
             const a = ref<null>(null);
             assertEquals(a.value, null);
 
@@ -76,7 +76,7 @@ describe("pullPushReactivity", () => {
             assertEquals(a.value, null);
         });
 
-        it("the ref should be initialized with undefined and updated", () => {
+        it("initializes with undefined and updates correctly", () => {
             const a = ref<undefined>(undefined);
             assertEquals(a.value, undefined);
 
@@ -603,6 +603,31 @@ describe("pullPushReactivity", () => {
                     { event: "markedAsDirty", name: "identity" },
                 ]);
             });
+        });
+
+        it("updates all computed subscribers when a dependency changes", () => {
+            const firstName = ref<string>("John");
+            const lastName = ref<string>("Doe");
+            const fullName = computed(() =>
+                `${firstName.value} ${lastName.value}`
+            );
+
+            const age = ref<number>(30);
+
+            const lightIdentity = computed(() =>
+                `${fullName.value} (${age.value} yo)`
+            );
+
+            const fullIdentity = computed(() =>
+                `${fullName.value} is ${age.value} years old`
+            );
+
+            assertEquals(lightIdentity.value, "John Doe (30 yo)");
+            assertEquals(fullIdentity.value, "John Doe is 30 years old");
+
+            firstName.value = "Jane";
+            assertEquals(lightIdentity.value, "Jane Doe (30 yo)");
+            assertEquals(fullIdentity.value, "Jane Doe is 30 years old");
         });
     });
 });
